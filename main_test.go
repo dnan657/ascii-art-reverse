@@ -79,7 +79,7 @@ func TestReverseAsciiArt(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			got, err := reverseAsciiArt(tc.inputFile)
+			got, err := reverseAsciiArt(tc.inputFile, tc.banner)
 
 			if tc.expectError {
 				if err == nil {

@@ -10,71 +10,78 @@ import (
 const charHeight = 8
 
 func main() {
-	var outputFileName string
-	var inputString string
-	var bannerName string = "standard"
+	var outputFileName, inputString, bannerName, reverseFile, bannerFlag string
+	var positionalArgs []string
+
+	bannerName = "standard" // Default
 
 	args := os.Args[1:]
 
-	// Проверка на флаг --reverse
-	if len(args) == 1 && strings.HasPrefix(args[0], "--reverse=") {
-		fileName := strings.TrimPrefix(args[0], "--reverse=")
-		if fileName == "" {
+	// 1. Разбор аргументов
+	for _, arg := range args {
+		if strings.HasPrefix(arg, "--output=") {
+			outputFileName = strings.TrimPrefix(arg, "--output=")
+		} else if strings.HasPrefix(arg, "--reverse=") {
+			reverseFile = strings.TrimPrefix(arg, "--reverse=")
+		} else if strings.HasPrefix(arg, "--banner=") {
+			bannerFlag = strings.TrimPrefix(arg, "--banner=")
+		} else if strings.HasPrefix(arg, "--") {
+			fmt.Printf("Error: Unknown flag %s\n", arg)
+			printUsage()
+			return
+		} else {
+			positionalArgs = append(positionalArgs, arg)
+		}
+	}
+
+	// 2. Установка баннера (флаг имеет приоритет)
+	if bannerFlag != "" {
+		bannerName = bannerFlag
+	}
+
+	// 3. Выбор режима работы
+	isReverseMode := reverseFile != ""
+
+	if isReverseMode {
+		if len(positionalArgs) > 0 {
+			if bannerFlag == "" && len(positionalArgs) == 1 {
+				bannerName = positionalArgs[0]
+			} else {
+				fmt.Println("Warning: Positional arguments are ignored when --reverse is used.")
+			}
+		}
+		if reverseFile == "" {
 			printUsage()
 			return
 		}
-
-		result, err := reverseAsciiArt(fileName)
+		result, err := reverseAsciiArt(reverseFile, bannerName)
 		if err != nil {
 			fmt.Println("Error:", err)
 			return
 		}
-
 		fmt.Print(result)
 		return
 	}
 
-	// Проверка неправильного формата флага --reverse
-	for _, arg := range args {
-		if strings.Contains(arg, "--reverse") && !strings.HasPrefix(arg, "--reverse=") {
-			printUsage()
-			return
+	// Режим генерации
+	if len(positionalArgs) > 0 {
+		inputString = positionalArgs[0]
+	}
+	if len(positionalArgs) > 1 {
+		if bannerFlag == "" {
+			bannerName = positionalArgs[1]
 		}
 	}
-
-	// Обработка аргументов для обычного ASCII-арт с поддержкой --output
-	switch len(args) {
-	case 1: // Если передан только один аргумент
-		inputString = args[0]
-		bannerName = "standard"
-	case 2: // Если передано два аргумента
-		if strings.HasPrefix(args[0], "--output=") {
-			outputFileName = strings.TrimPrefix(args[0], "--output=")
-			inputString = args[1]
-			bannerName = "standard"
-		} else {
-			inputString = args[0]
-			bannerName = args[1]
-		}
-	case 3: // Если передано три аргумента
-		if strings.HasPrefix(args[0], "--output=") {
-			outputFileName = strings.TrimPrefix(args[0], "--output=")
-			inputString = args[1]
-			bannerName = args[2]
-		} else {
-			printUsage()
-			return
-		}
-	default: // Если передано другое количество аргументов
+	if len(positionalArgs) > 2 {
 		printUsage()
 		return
 	}
-
 	if inputString == "" {
 		printUsage()
 		return
 	}
 
+	// Генерация
 	asciiArtMap, err := loadBanner(bannerName)
 	if err != nil {
 		fmt.Println("Error loading banner:", err)
@@ -84,17 +91,9 @@ func main() {
 	output := generateAsciiArt(inputString, asciiArtMap)
 
 	if outputFileName != "" {
-		file, err := os.Create(outputFileName)
-		if err != nil {
-			fmt.Println("Error creating output file:", err)
-			return
-		}
-		defer file.Close()
-
-		_, err = file.WriteString(output)
+		err := os.WriteFile(outputFileName, []byte(output), 0644)
 		if err != nil {
 			fmt.Println("Error writing to output file:", err)
-			return
 		}
 	} else {
 		fmt.Print(output)
@@ -102,22 +101,25 @@ func main() {
 }
 
 func printUsage() {
-	fmt.Println("Usage: go run . [OPTION]")
-	fmt.Println()
-	fmt.Println("EX: go run . --reverse=<fileName>")
+	fmt.Println("Usage: go run . [OPTION]... [STRING] [BANNER]")
+	fmt.Println("\nExample: go run . --output=banner.txt 'Hello' standard")
+	fmt.Println("\nOPTIONS:")
+	fmt.Println("  --output=<fileName>      Save the output to a file.")
+	fmt.Println("  --reverse=<fileName>     Convert ASCII art from a file back to text.")
+	fmt.Println("  --banner=<bannerName>    Specify the banner font to use (standard, shadow, thinkertoy).")
 }
 
-func reverseAsciiArt(fileName string) (string, error) {
+func reverseAsciiArt(fileName string, bannerName string) (string, error) {
 	// Читаем файл с ASCII-арт
 	data, err := os.ReadFile(fileName)
 	if err != nil {
 		return "", fmt.Errorf("failed to read file '%s': %w", fileName, err)
 	}
 
-	// Загружаем стандартный баннер для сравнения
-	asciiArtMap, err := loadBanner("standard")
+	// Загружаем баннер для сравнения
+	asciiArtMap, err := loadBanner(bannerName)
 	if err != nil {
-		return "", fmt.Errorf("failed to load standard banner: %w", err)
+		return "", fmt.Errorf("failed to load banner '%s': %w", bannerName, err)
 	}
 
 	// Разбиваем содержимое файла на строки
@@ -273,6 +275,7 @@ func generateAsciiArt(input string, asciiArtMap map[rune][]string) string {
 
 	for _, line := range lines {
 		if line == "" {
+			output.WriteString("\n")
 			continue
 		}
 
@@ -283,6 +286,6 @@ func generateAsciiArt(input string, asciiArtMap map[rune][]string) string {
 		}
 	}
 
-	result := strings.TrimRight(output.String(), "\n")
-	return result
+	// We remove the final newline to prevent an extra empty line at the end of the file
+	return strings.TrimSuffix(output.String(), "\n")
 }
